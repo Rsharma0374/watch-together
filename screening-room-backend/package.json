@@ -1,0 +1,20 @@
+{
+  "name": "screening-room-backend",
+  "version": "1.0.0",
+  "description": "Realtime backend for Screening Room — a 2-person watch-together app",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.8.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
