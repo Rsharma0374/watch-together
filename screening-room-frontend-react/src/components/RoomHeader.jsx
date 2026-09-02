@@ -13,7 +13,7 @@ function SeatIcon({ filled, waiting, name }) {
   )
 }
 
-export default function RoomHeader({ roomCode, occupantCount, onLeave, onCopyLink }) {
+export default function RoomHeader({ roomCode, occupantCount, isHost, hostName, onLeave, onCopyLink }) {
   const friendPresent = occupantCount >= 2
 
   const copyLink = () => {
@@ -38,8 +38,12 @@ export default function RoomHeader({ roomCode, occupantCount, onLeave, onCopyLin
       </div>
 
       <div className="seats">
-        <SeatIcon filled name="YOU" />
-        <SeatIcon filled={friendPresent} waiting={!friendPresent} name={friendPresent ? 'FRIEND' : 'EMPTY'} />
+        <SeatIcon filled name={isHost ? 'YOU · HOST' : 'YOU'} />
+        <SeatIcon
+          filled={friendPresent}
+          waiting={!friendPresent}
+          name={friendPresent ? (isHost ? 'FRIEND' : `${hostName || 'FRIEND'} · HOST`) : 'EMPTY'}
+        />
       </div>
     </header>
   )

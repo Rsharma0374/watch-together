@@ -4,6 +4,12 @@
  * Express provides a small REST API for creating/checking rooms.
  * Socket.IO handles the realtime sync (play/pause/seek/chat/seats).
  *
+ * Host model: the first person to join a room is the "host" — only
+ * they can load/play/pause/seek the video. Everyone else is a
+ * view-only "guest": their player just mirrors whatever the host
+ * does, and any control event they send is rejected. If the host
+ * disconnects, host status passes to the next remaining occupant.
+ *
  * State lives in memory (a Map). That's intentional: this app is
  * built for 2 people in a short-lived session, not persistence
  * across server restarts. If you outgrow that, swap ROOMS for
@@ -31,11 +37,21 @@ const io = new Server(server, {
 
 /** roomCode -> {
  *    createdAt, lastActivity,
- *    occupants: Map<socketId, { name }>,
+ *    occupants: Map<socketId, { name, isHost }>,
+ *    hostId: socketId | null,
  *    video: { url, isPlaying, currentTime, updatedAt }
  *  }
  */
 const ROOMS = new Map();
+
+function isHost(room, socketId) {
+  return !!room && room.hostId === socketId;
+}
+
+function hostName(room) {
+  if (!room || !room.hostId) return null;
+  return room.occupants.get(room.hostId)?.name || 'Guest';
+}
 
 function genCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I ambiguity
@@ -55,6 +71,7 @@ function touchRoom(code) {
 function publicRoomState(room) {
   return {
     occupantCount: room.occupants.size,
+    hostName: hostName(room),
     video: room.video
   };
 }
@@ -74,6 +91,7 @@ app.post('/api/rooms', (_req, res) => {
     createdAt: Date.now(),
     lastActivity: Date.now(),
     occupants: new Map(),
+    hostId: null,
     video: { url: null, isPlaying: false, currentTime: 0, updatedAt: Date.now() }
   });
   res.status(201).json({ code });
@@ -113,27 +131,40 @@ io.on('connection', (socket) => {
 
     currentRoom = code;
     socket.join(code);
-    room.occupants.set(socket.id, { name: name || 'Guest' });
+
+    // First occupant of a fresh room becomes host; everyone after is a guest.
+    if (!room.hostId) room.hostId = socket.id;
+    const amHost = isHost(room, socket.id);
+
+    room.occupants.set(socket.id, { name: name || 'Guest', isHost: amHost });
     touchRoom(code);
 
     // Tell the newly joined client the current state, so their player
-    // catches up immediately instead of starting from nothing.
+    // catches up immediately instead of starting from nothing. Also tell
+    // them whether they're the host, so their UI can show/hide controls.
     socket.emit('room:state', {
       code,
       occupantCount: room.occupants.size,
+      isHost: amHost,
+      hostName: hostName(room),
       video: room.video
     });
 
     // Tell everyone else someone joined.
     socket.to(code).emit('room:join', {
       occupantCount: room.occupants.size,
-      name: name || 'Guest'
+      name: name || 'Guest',
+      isHost: amHost
     });
   });
 
   socket.on('video:load', ({ url }) => {
     const room = ROOMS.get(currentRoom);
     if (!room) return;
+    if (!isHost(room, socket.id)) {
+      socket.emit('room:error', { message: 'Only the host can choose what plays.' });
+      return;
+    }
     room.video = { url, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
     touchRoom(currentRoom);
     socket.to(currentRoom).emit('video:load', { url });
@@ -142,6 +173,10 @@ io.on('connection', (socket) => {
   socket.on('video:play', ({ t }) => {
     const room = ROOMS.get(currentRoom);
     if (!room) return;
+    if (!isHost(room, socket.id)) {
+      socket.emit('room:error', { message: 'Only the host can control playback.' });
+      return;
+    }
     room.video.isPlaying = true;
     room.video.currentTime = t;
     room.video.updatedAt = Date.now();
@@ -152,6 +187,10 @@ io.on('connection', (socket) => {
   socket.on('video:pause', ({ t }) => {
     const room = ROOMS.get(currentRoom);
     if (!room) return;
+    if (!isHost(room, socket.id)) {
+      socket.emit('room:error', { message: 'Only the host can control playback.' });
+      return;
+    }
     room.video.isPlaying = false;
     room.video.currentTime = t;
     room.video.updatedAt = Date.now();
@@ -162,6 +201,10 @@ io.on('connection', (socket) => {
   socket.on('video:seek', ({ t }) => {
     const room = ROOMS.get(currentRoom);
     if (!room) return;
+    if (!isHost(room, socket.id)) {
+      socket.emit('room:error', { message: 'Only the host can control playback.' });
+      return;
+    }
     room.video.currentTime = t;
     room.video.updatedAt = Date.now();
     touchRoom(currentRoom);
@@ -176,18 +219,89 @@ io.on('connection', (socket) => {
     socket.to(currentRoom).emit('chat:message', { text, name });
   });
 
+  // ---------------------------------------------------------------
+  // Screen share — WebRTC signaling relay
+  // ---------------------------------------------------------------
+  // The server never sees the audio/video itself, only the SDP/ICE
+  // handshake messages needed for the two browsers to open a direct
+  // (or STUN-assisted) peer connection. Only the host may originate a
+  // share; guests may only answer/relay back to whoever is sharing.
+
+  socket.on('share:start', () => {
+    const room = ROOMS.get(currentRoom);
+    if (!room) return;
+    if (!isHost(room, socket.id)) {
+      socket.emit('room:error', { message: 'Only the host can share their screen.' });
+      return;
+    }
+    touchRoom(currentRoom);
+    socket.to(currentRoom).emit('share:start');
+  });
+
+  socket.on('share:stop', () => {
+    const room = ROOMS.get(currentRoom);
+    if (!room) return;
+    if (!isHost(room, socket.id)) return;
+    touchRoom(currentRoom);
+    socket.to(currentRoom).emit('share:stop');
+  });
+
+  socket.on('webrtc:offer', ({ sdp }) => {
+    const room = ROOMS.get(currentRoom);
+    if (!room) return;
+    if (!isHost(room, socket.id)) {
+      socket.emit('room:error', { message: 'Only the host can start a screen share.' });
+      return;
+    }
+    touchRoom(currentRoom);
+    socket.to(currentRoom).emit('webrtc:offer', { sdp });
+  });
+
+  socket.on('webrtc:answer', ({ sdp }) => {
+    if (!currentRoom || !ROOMS.has(currentRoom)) return;
+    touchRoom(currentRoom);
+    socket.to(currentRoom).emit('webrtc:answer', { sdp });
+  });
+
+  socket.on('webrtc:ice-candidate', ({ candidate }) => {
+    if (!currentRoom || !ROOMS.has(currentRoom)) return;
+    socket.to(currentRoom).emit('webrtc:ice-candidate', { candidate });
+  });
+
   socket.on('disconnect', () => {
     if (!currentRoom) return;
     const room = ROOMS.get(currentRoom);
     if (!room) return;
     room.occupants.delete(socket.id);
     touchRoom(currentRoom);
-    socket.to(currentRoom).emit('room:leave', { occupantCount: room.occupants.size });
 
     // Clean up empty rooms right away rather than waiting for the sweep.
     if (room.occupants.size === 0) {
       ROOMS.delete(currentRoom);
+      return;
     }
+
+    // If the host just left, promote whoever's left (oldest remaining
+    // occupant) so the room isn't stuck with no one able to control it.
+    let newHostName = null;
+    if (room.hostId === socket.id) {
+      // The old host is gone — tell everyone left to tear down any
+      // in-progress screen share, since the source stream just vanished.
+      socket.to(currentRoom).emit('share:stop');
+
+      const [nextId] = room.occupants.keys();
+      room.hostId = nextId;
+      const nextOccupant = room.occupants.get(nextId);
+      if (nextOccupant) nextOccupant.isHost = true;
+      newHostName = hostName(room);
+
+      io.to(nextId).emit('room:host-changed', { isHost: true, hostName: newHostName });
+    }
+
+    socket.to(currentRoom).emit('room:leave', {
+      occupantCount: room.occupants.size,
+      hostName: hostName(room)
+    });
   });
 });
 

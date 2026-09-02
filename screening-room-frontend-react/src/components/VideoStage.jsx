@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { extractYouTubeId, formatTime } from '../lib/utils'
+import { useFullscreen } from '../hooks/useFullscreen'
 
 function PlayIcon() {
   return (
@@ -28,10 +29,39 @@ function EmptyReel() {
     </svg>
   )
 }
+function FullscreenEnterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path
+        d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+function FullscreenExitIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path
+        d="M9 4v5H4M15 4v5h5M20 20v-5h-5M4 20v-5h5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
 
 export default function VideoStage({
   video,
   videoRef,
+  isHost,
+  hostName,
+  needsGesture,
   serverConnected,
   onLoadVideo,
   onTogglePlay,
@@ -40,6 +70,7 @@ export default function VideoStage({
   onTimeUpdate,
   onSeekTo,
   onCommitSeek,
+  onResumePlayback,
   onYouTubePlay,
   onYouTubePause,
   chatUnread,
@@ -48,6 +79,8 @@ export default function VideoStage({
   const [urlInput, setUrlInput] = useState('')
   const [duration, setDuration] = useState(0)
   const youtubePlayerRef = useRef(null)
+  const frameRef = useRef(null)
+  const { isFullscreen, toggleFullscreen } = useFullscreen(frameRef)
   const ytId = extractYouTubeId(video.url)
 
   // Load YouTube IFrame API once
@@ -134,11 +167,13 @@ export default function VideoStage({
   }, [video.url])
 
   const handleLoad = () => {
+    if (!isHost) return
     const trimmed = urlInput.trim()
     if (trimmed) onLoadVideo(trimmed)
   }
 
   const handleYouTubeTogglePlay = () => {
+    if (!isHost) return
     const player = youtubePlayerRef.current
     if (!player) return
     if (player.getPlayerState?.() === 1) {
@@ -152,23 +187,35 @@ export default function VideoStage({
 
   return (
     <main className="stage">
-      <div className="link-bar">
-        <input
-          type="text"
-          placeholder="Paste a YouTube link or direct video URL (.mp4, .webm)…"
-          value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleLoad()}
-        />
-        <button onClick={handleLoad}>Load</button>
-      </div>
+      {isHost ? (
+        <div className="link-bar">
+          <input
+            type="text"
+            placeholder="Paste a YouTube link or direct video URL (.mp4, .webm)…"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleLoad()}
+          />
+          <button onClick={handleLoad}>Load</button>
+        </div>
+      ) : (
+        <div className="link-bar link-bar-readonly">
+          <span>
+            Watching as guest — <strong>{hostName || 'the host'}</strong> picks what plays
+          </span>
+        </div>
+      )}
 
-      <div className="screen-frame">
+      <div className="screen-frame" ref={frameRef}>
         {!video.url && (
           <div className="empty-screen">
             <EmptyReel />
             <h3 className="display">Nothing's loaded yet</h3>
-            <p>Paste a link above and hit load — it'll appear here for both of you at once.</p>
+            <p>
+              {isHost
+                ? "Paste a link above and hit load — it'll appear here for both of you at once."
+                : `Waiting for ${hostName || 'the host'} to load something…`}
+            </p>
           </div>
         )}
 
@@ -187,40 +234,62 @@ export default function VideoStage({
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
           />
         )}
+
+        {video.url && needsGesture && (
+          <button className="gesture-overlay" onClick={onResumePlayback}>
+            <PlayIcon />
+            <span>Tap to join playback</span>
+          </button>
+        )}
+
+        {video.url && (
+          <button
+            className="fullscreen-btn"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Exit full screen' : 'Full screen'}
+          >
+            {isFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
+          </button>
+        )}
+
+        {video.url && !ytId && (
+          <div className="controls controls-overlay">
+            <button className="ctrl-btn" onClick={onTogglePlay} disabled={!isHost}>
+              {video.isPlaying ? <PauseIcon /> : <PlayIcon />}
+            </button>
+
+            <div className="seek-wrap">
+              <span className="time">{formatTime(video.currentTime)}</span>
+              <input
+                type="range"
+                min="0"
+                max={duration || 0}
+                step="0.1"
+                value={video.currentTime}
+                disabled={!isHost}
+                onChange={(e) => isHost && onSeekTo(parseFloat(e.target.value))}
+                onMouseUp={(e) => isHost && onCommitSeek(parseFloat(e.target.value))}
+                onTouchEnd={(e) => isHost && onCommitSeek(parseFloat(e.target.value))}
+              />
+              <span className="time">{formatTime(duration)}</span>
+            </div>
+
+            {!isFullscreen && <ChatToggle unread={chatUnread} onClick={onToggleChat} />}
+          </div>
+        )}
+
+        {video.url && ytId && (
+          <div className="controls controls-overlay">
+            <button className="ctrl-btn" onClick={handleYouTubeTogglePlay} disabled={!isHost}>
+              {video.isPlaying ? <PauseIcon /> : <PlayIcon />}
+            </button>
+            {!isFullscreen && <ChatToggle unread={chatUnread} onClick={onToggleChat} style={{ marginLeft: 'auto' }} />}
+          </div>
+        )}
       </div>
 
-      {video.url && !ytId && (
-        <div className="controls">
-          <button className="ctrl-btn" onClick={onTogglePlay}>
-            {video.isPlaying ? <PauseIcon /> : <PlayIcon />}
-          </button>
-
-          <div className="seek-wrap">
-            <span className="time">{formatTime(video.currentTime)}</span>
-            <input
-              type="range"
-              min="0"
-              max={duration || 0}
-              step="0.1"
-              value={video.currentTime}
-              onChange={(e) => onSeekTo(parseFloat(e.target.value))}
-              onMouseUp={(e) => onCommitSeek(parseFloat(e.target.value))}
-              onTouchEnd={(e) => onCommitSeek(parseFloat(e.target.value))}
-            />
-            <span className="time">{formatTime(duration)}</span>
-          </div>
-
-          <ChatToggle unread={chatUnread} onClick={onToggleChat} />
-        </div>
-      )}
-
-      {video.url && ytId && (
-        <div className="controls">
-          <button className="ctrl-btn" onClick={handleYouTubeTogglePlay}>
-            {video.isPlaying ? <PauseIcon /> : <PlayIcon />}
-          </button>
-          <ChatToggle unread={chatUnread} onClick={onToggleChat} style={{ marginLeft: 'auto' }} />
-        </div>
+      {!isHost && video.url && (
+        <p className="guest-note">You're watching — only {hostName || 'the host'} can control playback.</p>
       )}
 
       <div className="sync-strip">

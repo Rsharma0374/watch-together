@@ -20,6 +20,12 @@ export default function App() {
         <Room
           roomCode={roomState.roomCode}
           occupantCount={roomState.occupantCount}
+          isHost={roomState.isHost}
+          hostName={roomState.hostName}
+          needsGesture={roomState.needsGesture}
+          stageMode={roomState.stageMode}
+          isSharing={roomState.isSharing}
+          remoteStream={roomState.remoteStream}
           video={roomState.video}
           videoRef={roomState.videoRef}
           serverConnected={roomState.serverConnected}
