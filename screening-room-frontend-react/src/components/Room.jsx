@@ -2,12 +2,18 @@ import RoomHeader from './RoomHeader'
 import VideoStage from './VideoStage'
 import ScreenShareStage from './ScreenShareStage'
 import ChatDrawer from './ChatDrawer'
+import RemoteAudioPlayers from './RemoteAudioPlayers'
 
 export default function Room({
   roomCode,
   occupantCount,
+  maxOccupants,
   isHost,
+  selfName,
   hostName,
+  occupants,
+  micOn,
+  remoteAudioStreams,
   needsGesture,
   stageMode,
   isSharing,
@@ -32,10 +38,20 @@ export default function Room({
       <RoomHeader
         roomCode={roomCode}
         occupantCount={occupantCount}
+        maxOccupants={maxOccupants}
         isHost={isHost}
+        selfName={selfName}
         hostName={hostName}
+        occupants={occupants}
+        micOn={micOn}
+        unread={unread}
+        chatOpen={chatOpen}
+        onToggleMic={actions.toggleMic}
+        onToggleChat={actions.toggleChat}
         onLeave={actions.leaveRoom}
       />
+
+      <RemoteAudioPlayers streams={remoteAudioStreams} />
 
       <div className="room-body">
         <div className="stage-wrap">
@@ -83,10 +99,9 @@ export default function Room({
               onSeekTo={actions.seekTo}
               onCommitSeek={actions.commitSeek}
               onResumePlayback={actions.resumePlayback}
+              onInitialVideoReady={actions.syncInitialVideo}
               onYouTubePlay={actions.handleYouTubePlay}
               onYouTubePause={actions.handleYouTubePause}
-              chatUnread={unread}
-              onToggleChat={actions.toggleChat}
             />
           )}
         </div>

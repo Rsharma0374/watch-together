@@ -20,8 +20,13 @@ export default function App() {
         <Room
           roomCode={roomState.roomCode}
           occupantCount={roomState.occupantCount}
+          maxOccupants={roomState.maxOccupants}
           isHost={roomState.isHost}
+          selfName={roomState.selfName}
           hostName={roomState.hostName}
+          occupants={roomState.occupants}
+          micOn={roomState.micOn}
+          remoteAudioStreams={roomState.remoteAudioStreams}
           needsGesture={roomState.needsGesture}
           stageMode={roomState.stageMode}
           isSharing={roomState.isSharing}

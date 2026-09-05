@@ -93,6 +93,17 @@ h1.title em { font-style: italic; font-weight: 400; color: var(--gold); }
 .subtitle { margin-top: 22px; color: var(--muted); font-size: 17px; max-width: 480px; line-height: 1.6; }
 
 .ticket-row { display: flex; gap: 18px; margin-top: 44px; flex-wrap: wrap; justify-content: center; }
+.name-field {
+  width: 100%; max-width: 394px; display: flex; flex-direction: column; gap: 7px;
+  text-align: left; color: var(--muted); font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+}
+.name-field input {
+  width: 100%; background: var(--bg-raised); border: 1px solid var(--line); border-radius: 10px;
+  padding: 13px 15px; color: var(--cream); font: 14px 'Work Sans', sans-serif; outline: none;
+  text-transform: none; letter-spacing: normal;
+}
+.name-field input:focus { border-color: var(--gold-dim); }
 
 .ticket-btn {
   position: relative;
@@ -155,19 +166,60 @@ h1.title em { font-style: italic; font-weight: 400; color: var(--gold); }
 
 .stub { display: flex; align-items: center; gap: 0; background: var(--bg-raised); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .stub-code { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; letter-spacing: 0.14em; padding: 9px 14px; color: var(--gold); }
+.occupant-count { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; padding-right: 10px; }
 .stub-perf { width: 0; border-left: 2px dashed var(--line); height: 22px; }
 .stub-copy { background: none; border: none; color: var(--muted); padding: 9px 13px; font-size: 12px; font-weight: 500; border-left: 1px solid var(--line); transition: color .15s ease; }
 .stub-copy:hover { color: var(--gold); }
 
-.seats { display: flex; align-items: center; gap: 10px; }
-.seat { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.seat svg { width: 20px; height: 20px; }
-.seat .seat-name { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; }
-.seat.filled svg path { fill: var(--gold); }
-.seat.filled .seat-name { color: var(--gold); }
-.seat.empty svg path { fill: var(--seat-empty); }
-.seat.waiting svg { animation: pulse-seat 1.6s ease-in-out infinite; }
-@keyframes pulse-seat { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.9; } }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.participants-menu { position: relative; }
+.participants-btn {
+  height: 38px; min-width: 48px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg-raised); color: var(--cream); display: flex; align-items: center; justify-content: center; gap: 5px;
+  font: 12px 'JetBrains Mono', monospace;
+}
+.participants-btn:hover { border-color: var(--gold-dim); color: var(--gold); }
+.participants-btn svg { width: 18px; height: 18px; }
+.header-chat-btn {
+  height: 38px; padding: 0 11px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg-raised); color: var(--muted); display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600;
+}
+.header-chat-btn:hover, .header-chat-btn.active { color: var(--gold); border-color: var(--gold-dim); }
+.header-chat-btn svg { width: 17px; height: 17px; }
+.header-chat-unread {
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; display: grid; place-items: center;
+  background: var(--rose); color: #fff; font-size: 10px; font-weight: 700;
+}
+.participants-popover {
+  position: absolute; right: 0; top: calc(100% + 8px); min-width: 210px; max-width: 280px;
+  padding: 10px; background: var(--bg-alt); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 7px; z-index: 30;
+}
+.participants-title { color: var(--muted); font: 10px 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; padding: 2px 3px 5px; }
+.chip {
+  display: flex; align-items: center; gap: 6px; background: var(--bg-raised); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 10px 5px 12px; font-size: 11.5px; color: var(--muted);
+  transition: border-color .15s ease;
+}
+.participants-popover .chip { justify-content: space-between; width: 100%; }
+.chip-name { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.02em; white-space: nowrap; }
+.chip-host { color: var(--gold-dim); }
+.chip-mic { display: flex; align-items: center; }
+.chip-mic svg { width: 13px; height: 13px; }
+.chip-mic.on { color: #3fbf6b; }
+.chip-mic.off { color: var(--muted); opacity: 0.6; }
+.chip.chip-speaking { border-color: #3fbf6b; }
+
+.mic-btn {
+  width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center; transition: all .15s ease;
+}
+.mic-btn svg { width: 17px; height: 17px; }
+.mic-btn.off { background: var(--bg-raised); color: var(--muted); }
+.mic-btn.off:hover { color: var(--cream); border-color: var(--gold-dim); }
+.mic-btn.on { background: #3fbf6b; color: #06210f; border-color: #3fbf6b; }
+.mic-btn.on:hover { background: #4fd47c; }
 
 .room-body { flex: 1; display: flex; gap: 0; position: relative; }
 .stage-wrap { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -202,6 +254,7 @@ h1.title em { font-style: italic; font-weight: 400; color: var(--gold); }
   min-height: 340px; box-shadow: var(--shadow);
 }
 .screen-frame video, .screen-frame iframe { width: 100%; height: 100%; display: block; border: none; object-fit: contain; background: #000; }
+.guest-player-locked, .guest-player-locked iframe { pointer-events: none; }
 .fullscreen-btn {
   position: absolute; top: 12px; right: 12px; z-index: 3;
   width: 34px; height: 34px; border-radius: 8px; border: none;
@@ -218,7 +271,7 @@ h1.title em { font-style: italic; font-weight: 400; color: var(--gold); }
 .controls { display: flex; align-items: center; gap: 14px; margin-top: 16px; background: var(--bg-raised); border: 1px solid var(--line); border-radius: 14px; padding: 12px 18px; }
 .controls-overlay {
   position: absolute; left: 10px; right: 10px; bottom: 10px; margin-top: 0; z-index: 3;
-  background: rgba(10, 8, 4, 0.6); backdrop-filter: blur(6px); border-color: rgba(255,255,255,0.08);
+  background: transparent; border-color: transparent; backdrop-filter: none;
 }
 /* Fullscreen: the browser makes .screen-frame fill the viewport; make sure
    its contents actually fill that space. */

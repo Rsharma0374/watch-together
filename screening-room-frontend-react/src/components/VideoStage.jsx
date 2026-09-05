@@ -71,31 +71,52 @@ export default function VideoStage({
   onSeekTo,
   onCommitSeek,
   onResumePlayback,
+  onInitialVideoReady,
   onYouTubePlay,
-  onYouTubePause,
-  chatUnread,
-  onToggleChat
+  onYouTubePause
 }) {
   const [urlInput, setUrlInput] = useState('')
   const [duration, setDuration] = useState(0)
+  const [youtubeApiReady, setYoutubeApiReady] = useState(() => Boolean(window.YT?.Player))
   const youtubePlayerRef = useRef(null)
   const frameRef = useRef(null)
   const { isFullscreen, toggleFullscreen } = useFullscreen(frameRef)
   const ytId = extractYouTubeId(video.url)
 
-  // Load YouTube IFrame API once
+  // Load YouTube IFrame API once. The API loads asynchronously, so simply
+  // checking window.YT when a late join renders is not enough: it is often
+  // still loading at that point and the player would otherwise never mount.
   useEffect(() => {
-    if (!window.YT) {
+    if (window.YT?.Player) {
+      setYoutubeApiReady(true)
+      return
+    }
+
+    const previousReadyHandler = window.onYouTubeIframeAPIReady
+    const readyHandler = () => {
+      previousReadyHandler?.()
+      setYoutubeApiReady(true)
+    }
+    window.onYouTubeIframeAPIReady = readyHandler
+
+    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
       const tag = document.createElement('script')
       tag.src = 'https://www.youtube.com/iframe_api'
       const firstScriptTag = document.getElementsByTagName('script')[0]
       firstScriptTag.parentNode.insertBefore(tag, firstScriptTag)
     }
+
+    return () => {
+      // Do not replace a callback installed by another mounted instance.
+      if (window.onYouTubeIframeAPIReady === readyHandler) {
+        window.onYouTubeIframeAPIReady = previousReadyHandler
+      }
+    }
   }, [])
 
   // Initialize YouTube player when iframe is ready
   useEffect(() => {
-    if (!ytId || !window.YT || !window.YT.Player) return
+    if (!ytId || !youtubeApiReady || !window.YT?.Player) return
 
     const iframeContainer = document.getElementById('youtube-player')
     if (!iframeContainer) return
@@ -113,18 +134,19 @@ export default function VideoStage({
       height: '100%',
       width: '100%',
       videoId: ytId,
-      playerVars: {
-        autoplay: 0,
-        controls: 0,
-        rel: 0,
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          disablekb: 1,
+          rel: 0,
         showinfo: 0
       },
       events: {
         onReady: (event) => {
-          // Sync state when player is ready
-          if (video.isPlaying) {
-            event.target.playVideo()
-          }
+          // A late join has no later event to wait for. Apply the current
+          // server snapshot as soon as the embedded player is ready.
+          event.target.seekTo(video.currentTime || 0, true)
+          if (video.isPlaying) event.target.playVideo()
         },
         onStateChange: (event) => {
           // 1 = PLAYING, 2 = PAUSED
@@ -143,7 +165,7 @@ export default function VideoStage({
         youtubePlayerRef.current.destroy()
       }
     }
-  }, [ytId])
+  }, [ytId, youtubeApiReady])
 
   // Sync YouTube player state when video state changes (after player is created)
   useEffect(() => {
@@ -220,7 +242,11 @@ export default function VideoStage({
         )}
 
         {video.url && ytId && (
-          <div id="youtube-player" style={{ width: '100%', height: '100%' }} />
+          <div
+            id="youtube-player"
+            className={!isHost ? 'guest-player-locked' : ''}
+            style={{ width: '100%', height: '100%' }}
+          />
         )}
 
         {video.url && !ytId && (
@@ -231,7 +257,11 @@ export default function VideoStage({
             onPlay={onNativePlay}
             onPause={onNativePause}
             onTimeUpdate={onTimeUpdate}
-            onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+            onLoadedMetadata={(e) => {
+              setDuration(e.currentTarget.duration || 0)
+              onInitialVideoReady?.(e.currentTarget)
+            }}
+            onCanPlay={(e) => onInitialVideoReady?.(e.currentTarget)}
           />
         )}
 
@@ -252,9 +282,9 @@ export default function VideoStage({
           </button>
         )}
 
-        {video.url && !ytId && (
+        {video.url && !ytId && isHost && (
           <div className="controls controls-overlay">
-            <button className="ctrl-btn" onClick={onTogglePlay} disabled={!isHost}>
+            <button className="ctrl-btn" onClick={onTogglePlay}>
               {video.isPlaying ? <PauseIcon /> : <PlayIcon />}
             </button>
 
@@ -266,24 +296,21 @@ export default function VideoStage({
                 max={duration || 0}
                 step="0.1"
                 value={video.currentTime}
-                disabled={!isHost}
-                onChange={(e) => isHost && onSeekTo(parseFloat(e.target.value))}
-                onMouseUp={(e) => isHost && onCommitSeek(parseFloat(e.target.value))}
-                onTouchEnd={(e) => isHost && onCommitSeek(parseFloat(e.target.value))}
+                onChange={(e) => onSeekTo(parseFloat(e.target.value))}
+                onMouseUp={(e) => onCommitSeek(parseFloat(e.target.value))}
+                onTouchEnd={(e) => onCommitSeek(parseFloat(e.target.value))}
               />
               <span className="time">{formatTime(duration)}</span>
             </div>
 
-            {!isFullscreen && <ChatToggle unread={chatUnread} onClick={onToggleChat} />}
           </div>
         )}
 
-        {video.url && ytId && (
+        {video.url && ytId && isHost && (
           <div className="controls controls-overlay">
-            <button className="ctrl-btn" onClick={handleYouTubeTogglePlay} disabled={!isHost}>
+            <button className="ctrl-btn" onClick={handleYouTubeTogglePlay}>
               {video.isPlaying ? <PauseIcon /> : <PlayIcon />}
             </button>
-            {!isFullscreen && <ChatToggle unread={chatUnread} onClick={onToggleChat} style={{ marginLeft: 'auto' }} />}
           </div>
         )}
       </div>
@@ -297,14 +324,5 @@ export default function VideoStage({
         <span>{serverConnected ? 'Synced live with your room' : 'Reconnecting…'}</span>
       </div>
     </main>
-  )
-}
-
-function ChatToggle({ unread, onClick, style }) {
-  return (
-    <button className="chat-toggle" onClick={onClick} style={style}>
-      Chat
-      {unread > 0 && <span className="unread">{unread}</span>}
-    </button>
   )
 }

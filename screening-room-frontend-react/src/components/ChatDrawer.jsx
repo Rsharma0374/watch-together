@@ -24,7 +24,7 @@ export default function ChatDrawer({ open, messages, onClose, onSend }) {
 
       <div className="chat-log" ref={logRef}>
         {messages.map((m, i) => (
-          <div key={i} className={`msg ${m.type}`}>
+          <div key={m.id || i} className={`msg ${m.type}`}>
             {m.text}
           </div>
         ))}
