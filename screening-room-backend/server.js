@@ -25,6 +25,11 @@
  * built for a small short-lived session, not persistence across
  * server restarts. If you outgrow that, swap ROOMS for Redis
  * without changing any of the event contracts below.
+ *
+ * Routing prefix: everything (REST + Socket.IO) is mounted under
+ * /screening-service, so this app can sit behind a shared gateway
+ * (e.g. Kong) that routes by path prefix alongside other services
+ * on the same host.
  * ---------------------------------------------------------------
  */
 
@@ -37,13 +42,21 @@ const PORT = process.env.PORT || 3001;
 const MAX_OCCUPANTS = 5;
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000; // rooms auto-expire after 6h of no activity
 
+// Base path this whole service is mounted under. Change here once if the
+// gateway prefix ever changes — everything below derives from it.
+const BASE_PATH = '/screening-service';
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+  // Socket.IO's own handshake path also needs the prefix, or a gateway
+  // routing purely on path prefix will never forward the socket.io
+  // polling/upgrade requests to this service.
+  path: `${BASE_PATH}/socket.io`
 });
 
 /** roomCode -> {
@@ -108,13 +121,18 @@ function publicRoomState(room) {
 // ---------------------------------------------------------------
 // REST API
 // ---------------------------------------------------------------
+// Mounted on a router so every route automatically lives under
+// BASE_PATH (e.g. /screening-service/api/health) without repeating
+// the prefix on each route definition.
 
-app.get('/api/health', (_req, res) => {
+const router = express.Router();
+
+router.get('/api/health', (_req, res) => {
   res.json({ ok: true, rooms: ROOMS.size, uptime: process.uptime() });
 });
 
 // Create a new room, get back its code.
-app.post('/api/rooms', (_req, res) => {
+router.post('/api/rooms', (_req, res) => {
   const code = genCode();
   ROOMS.set(code, {
     createdAt: Date.now(),
@@ -128,7 +146,7 @@ app.post('/api/rooms', (_req, res) => {
 });
 
 // Check whether a room exists / has space, before a client tries to join it.
-app.get('/api/rooms/:code', (req, res) => {
+router.get('/api/rooms/:code', (req, res) => {
   const code = req.params.code.toUpperCase();
   const room = ROOMS.get(code);
   if (!room) return res.status(404).json({ exists: false });
@@ -139,6 +157,8 @@ app.get('/api/rooms/:code', (req, res) => {
     ...publicRoomState(room)
   });
 });
+
+app.use(BASE_PATH, router);
 
 // ---------------------------------------------------------------
 // Socket.IO — realtime sync
@@ -404,5 +424,5 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 server.listen(PORT, () => {
-  console.log(`Screening Room backend listening on :${PORT}`);
+  console.log(`Screening Room backend listening on :${PORT}${BASE_PATH}`);
 });
