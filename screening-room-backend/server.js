@@ -33,7 +33,7 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8001;
 const MAX_OCCUPANTS = 5;
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000; // rooms auto-expire after 6h of no activity
 
