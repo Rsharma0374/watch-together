@@ -16,5 +16,5 @@ const SOCKET_PATH = `${basePath || ''}/socket.io`
 export const socket = io(backend.origin, {
   autoConnect: true,
   path: SOCKET_PATH,
-  transports: ['websocket', 'polling']
+  transports: ['polling', 'websocket']
 })
